@@ -11,8 +11,9 @@ import time
 from datetime import datetime, timedelta
 
 import pytz
+import httpx
 import requests
-from requests import JSONDecodeError
+from json import JSONDecodeError
 
 from devo.common import default_from, default_to
 
@@ -81,17 +82,17 @@ class DevoClientRequestException(DevoClientException):
     """Devo Client Exception that is raised whenever a query data request
     is performed and processed but an error is found on server side"""
 
-    def __init__(self, response: requests.models.Response):
+    def __init__(self, response: httpx._models.Response):
         """
         Creates an exception related bad request of data queries
 
-        :param response: A `requests.models.Response` model standing
+        :param response: A `httpx._models.Response` model standing
         for the `request` library response for the query data request.
         It will be also used as `args` attribute in `Exception`class
         """
         self.status = response.status_code
         try:
-            error_response = response.json()
+            error_response = json.loads(response.text)
             self.message = error_response.get(
                 "msg", error_response.get("error", "Error Launching Query")
             )
@@ -626,7 +627,7 @@ class Client:
                 # In case of NOT stream mode we return the whole server
                 # response.
                 return (response, None, None)
-            except requests.exceptions.ConnectionError as error:
+            except httpx.NetworkError as error:
                 tries += 1
                 if tries > self.retries:
                     raise DevoClientException(ERROR_MSGS["connection_error"]) from error
@@ -640,16 +641,27 @@ class Client:
         """
         POST request method extracted for mocking purposes
         """
-        return requests.post(
-            "{}://{}".format(
-                "http" if self.unsecure_http else "https", "/".join(self.address)
-            ),
-            data=payload,
-            headers=self._get_headers(payload),
-            verify=self.verify,
-            timeout=self.timeout,
-            stream=self.config.stream,
-        )
+        if self.config.stream:
+            return requests.post(
+                url="{}://{}".format(
+                    "http" if self.unsecure_http else "https", "/".join(self.address)
+                ),
+                data=payload,
+                headers=self._get_headers(payload),
+                verify=self.verify,
+                timeout=self.timeout,
+                stream=True
+            )
+        else:
+            return httpx.post(
+                "{}://{}".format(
+                    "http" if self.unsecure_http else "https", "/".join(self.address)
+                ),
+                data=payload,
+                headers=self._get_headers(payload),
+                verify=self.verify,
+                timeout=self.timeout
+            )
 
     @staticmethod
     def _get_payload(query, query_id, dates, opts):
@@ -827,7 +839,7 @@ class Client:
         while tries <= self.retries:
             response = None
             try:
-                response = requests.get(
+                response = httpx.get(
                     "https://{}".format(address),
                     headers=self._get_headers(""),
                     verify=self.verify,

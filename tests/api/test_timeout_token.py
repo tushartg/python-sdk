@@ -1,10 +1,9 @@
 import json
 import unittest
-from datetime import datetime
 from unittest import mock
 from unittest.mock import MagicMock
 
-from requests.models import Response
+import httpx
 
 from devo.api import Client
 from devo.api.client import (DEFAULT_KEEPALIVE_TOKEN,
@@ -41,7 +40,7 @@ class TimeoutTokenCase(unittest.TestCase):
             },
         )
         with mock.patch("devo.api.Client._make_request") as patched_make_request:
-            response = Response()
+            response = httpx.Response()
             response.status_code = 200
 
             if isinstance(result, str):
